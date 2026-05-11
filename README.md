@@ -195,4 +195,4 @@ Kiekvienas įrašas:
 
 ## Licencija
 
-Sukurta Replit platformoje. Naudokite laisvai savo projektuose.
+LovLaus Media
