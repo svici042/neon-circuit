@@ -1,5 +1,6 @@
 # NEON CIRCUIT — Futuristic Racing Game
 
+
 3D futuristinė lenktynių žaidimas naršyklėje, sukurtas su React, Three.js ir Web Audio API.
 
 ---
@@ -195,4 +196,8 @@ Kiekvienas įrašas:
 
 ## Licencija
 
-Sukurta Replit platformoje. Naudokite laisvai savo projektuose.
+© 2026 LovLaus Media
+
+
+
+
