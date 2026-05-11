@@ -196,8 +196,12 @@ Kiekvienas įrašas:
 
 ## Licencija
 
+<<<<<<< HEAD
 © 2026 LovLaus Media
 
 
 
 
+=======
+LovLaus Media
+>>>>>>> d92beb5dddd09ef740e30262d8392c1ae6db87bb
