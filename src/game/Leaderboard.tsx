@@ -1,3 +1,4 @@
+/** Renders validated, already-persisted race results; Escape returns to menu. */
 import { useEffect, useRef } from "react";
 import { type LeaderboardEntry } from "./leaderboardStorage";
 import { formatTime } from "./time";
@@ -169,29 +170,7 @@ export default function Leaderboard({ entries, latestEntry, onPlay, title, stora
         <button
           type="button"
           onClick={onPlay}
-          style={{
-            width: "100%",
-            padding: "14px",
-            background: "transparent",
-            border: "2px solid #00eeff",
-            borderRadius: 8,
-            color: "#00eeff",
-            fontSize: 16,
-            fontWeight: "bold",
-            letterSpacing: 4,
-            cursor: "pointer",
-            fontFamily: "'Courier New', monospace",
-            boxShadow: "0 0 20px #00eeff33",
-            transition: "all 0.2s",
-          }}
-          onMouseEnter={(e) => {
-            (e.target as HTMLButtonElement).style.background = "#00eeff";
-            (e.target as HTMLButtonElement).style.color = "#000";
-          }}
-          onMouseLeave={(e) => {
-            (e.target as HTMLButtonElement).style.background = "transparent";
-            (e.target as HTMLButtonElement).style.color = "#00eeff";
-          }}
+          className="leaderboard-action-button"
         >
           RACE AGAIN
         </button>

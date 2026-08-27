@@ -1,3 +1,8 @@
+/**
+ * Shared imperative input state read by the render loop. Keyboard, touch, and
+ * gyroscope adapters are the only writers; every lifecycle exit resets all
+ * fields so a released or hidden control cannot leave the car accelerating.
+ */
 export const controls = {
   forward: false,
   backward: false,

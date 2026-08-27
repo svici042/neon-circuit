@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadLeaderboard, MAX_RESULTS_PER_TRACK, normalizeLeaderboard, saveLeaderboard, type StorageLike } from "./leaderboardStorage";
+import { loadLeaderboard, MAX_RESULTS_PER_TRACK, MAX_STORED_CHARACTERS, normalizeLeaderboard, saveLeaderboard, type StorageLike } from "./leaderboardStorage";
 
 const valid = (index = 0) => ({ trackId: 1, trackName: "Neon Oval", totalTime: 10_000 + index, bestLap: 3_000, date: "2026-01-01T00:00:00.000Z" });
 
@@ -19,5 +19,13 @@ describe("leaderboard storage", () => {
     const brokenWrite: StorageLike = { getItem: () => null, setItem: () => { throw new DOMException("quota"); } };
     expect(loadLeaderboard(brokenRead)).toEqual([]);
     expect(saveLeaderboard([normalizeLeaderboard([valid()])[0]], brokenWrite)).toBe(false);
+  });
+
+  it("rejects oversized persisted input before parsing", () => {
+    const oversized: StorageLike = {
+      getItem: () => `[${" ".repeat(MAX_STORED_CHARACTERS)}]`,
+      setItem: () => undefined,
+    };
+    expect(loadLeaderboard(oversized)).toEqual([]);
   });
 });

@@ -3,6 +3,7 @@ import {
   CAR_COLLISION_RADIUS,
   isClosedLoop,
   isPointOnRoad,
+  isValidTrackGeometry,
   moveCircleOnRoad,
   sampleRoundedRect,
 } from "./trackGeometry";
@@ -50,6 +51,7 @@ describe("rounded track definitions", () => {
       expect(geometry.inner.radius).toBeGreaterThan(0);
       expect(isClosedLoop(sampleRoundedRect(geometry.outer))).toBe(true);
       expect(isClosedLoop(sampleRoundedRect(geometry.inner))).toBe(true);
+      expect(isValidTrackGeometry(geometry)).toBe(true);
       expect(sampleRoundedRect({
         halfX: geometry.centerHalfX,
         halfZ: geometry.centerHalfZ,
@@ -70,6 +72,19 @@ describe("rounded track definitions", () => {
         expect(boostCorners(pad).every((corner) => isPointOnRoad(track.geometry, corner))).toBe(true);
       }
     }
+  });
+
+  it("rejects malformed loops and inverted track dimensions", () => {
+    const points = sampleRoundedRect(TRACKS[0].geometry.outer);
+    expect(isClosedLoop(points.slice(0, 3))).toBe(false);
+    expect(isClosedLoop(points.map((point, index) => index === 4 ? { ...points[3] } : point))).toBe(false);
+    expect(isClosedLoop(points.map((point, index) => index === 4 ? { x: Number.NaN, z: point.z } : point))).toBe(false);
+    expect(isClosedLoop(points.map((point, index) => index === points.length - 1 ? { x: 10_000, z: 10_000 } : point))).toBe(false);
+
+    const geometry = TRACKS[0].geometry;
+    expect(isValidTrackGeometry({ ...geometry, roadWidth: -1 })).toBe(false);
+    expect(isValidTrackGeometry({ ...geometry, inner: { ...geometry.outer } })).toBe(false);
+    expect(() => sampleRoundedRect(geometry.outer, 0)).toThrow();
   });
 });
 

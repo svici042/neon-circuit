@@ -1,3 +1,4 @@
+/** Read-only race telemetry overlay; all times are monotonic milliseconds. */
 import { formatTime } from "./time";
 
 interface HUDProps {

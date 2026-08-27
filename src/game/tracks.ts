@@ -1,3 +1,8 @@
+/**
+ * Ten immutable authored track themes flow through one rounded-rectangle
+ * factory. Dimensions are X/Z half-extents in world units; original widths are
+ * retained alongside the required doubled road widths for regression checks.
+ */
 import { makeTrackGeometry, roundedRectSvgPath, type TrackGeometry } from "./trackGeometry";
 
 export interface BoostPad {
@@ -65,6 +70,7 @@ function boostForStraight(geometry: TrackGeometry, side: TrackSide, offset: numb
   };
 }
 
+/** Derives every gameplay, render, gate, boost, and preview value from one validated geometry. */
 export function makeRoundedTrack(outerHalfX: number, outerHalfZ: number, originalRoadWidth: number, meta: TrackMeta): TrackDef {
   const geometry = makeTrackGeometry(outerHalfX, outerHalfZ, originalRoadWidth);
   const scale = 38 / Math.max(geometry.outer.halfX, geometry.outer.halfZ);

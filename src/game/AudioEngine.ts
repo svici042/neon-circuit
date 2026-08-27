@@ -1,3 +1,8 @@
+/**
+ * Owns one lazily-created Web Audio graph. Scheduled music sources and helper
+ * nodes are tracked until their ended event; stop/destroy cancels the scheduler,
+ * stops sources, disconnects nodes, and finally closes the AudioContext.
+ */
 function makeDistortionCurve(amount: number): Float32Array<ArrayBuffer> {
   const curve = new Float32Array(256);
   for (let index = 0; index < curve.length; index++) {

@@ -1,3 +1,7 @@
+/**
+ * Post-build guard for GitHub Pages: production HTML must reference emitted
+ * files below `/neon-circuit/`, never the source entry or an escaping path.
+ */
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -16,5 +20,9 @@ if (productionAssets.length === 0) {
 
 for (const reference of productionAssets) {
   const relativePath = reference.slice("/neon-circuit/".length);
-  await access(path.join(outputDirectory, relativePath));
+  const assetPath = path.resolve(outputDirectory, relativePath);
+  if (!assetPath.startsWith(`${outputDirectory}${path.sep}`)) {
+    throw new Error(`Production asset escapes dist: ${reference}`);
+  }
+  await access(assetPath);
 }

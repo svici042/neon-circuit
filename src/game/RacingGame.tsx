@@ -1,3 +1,8 @@
+/**
+ * Owns the React Three Fiber scene and the car's frame-rate-sensitive mutable
+ * state. React owns the scene graph; refs own velocity, heading, boost, lap
+ * progress, and reusable vectors. Changing trackDef resets every mutable value.
+ */
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useRef, useEffect } from "react";
 import * as THREE from "three";
@@ -41,6 +46,10 @@ function Car({ onLap, onBoostChange, onSpeedChange, racing, trackDef }: CarProps
   const boostRef = useRef(false);
   const boostEndRef = useRef(0);
   const lapProgressRef = useRef<LapProgress>(INITIAL_LAP_PROGRESS);
+  const movementDirectionRef = useRef<THREE.Vector3 | null>(null);
+  const cameraTargetRef = useRef<THREE.Vector3 | null>(null);
+  if (movementDirectionRef.current === null) movementDirectionRef.current = new THREE.Vector3();
+  if (cameraTargetRef.current === null) cameraTargetRef.current = new THREE.Vector3();
 
   const { camera } = useThree();
 
@@ -52,6 +61,7 @@ function Car({ onLap, onBoostChange, onSpeedChange, racing, trackDef }: CarProps
     velocity.current = 0;
     lapProgressRef.current = INITIAL_LAP_PROGRESS;
     boostRef.current = false;
+    boostEndRef.current = 0;
     onBoostChange(false);
     onSpeedChange(0);
   }, [onBoostChange, onSpeedChange, trackDef]);
@@ -93,12 +103,16 @@ function Car({ onLap, onBoostChange, onSpeedChange, racing, trackDef }: CarProps
 
     onSpeedChange(velocity.current);
 
-    const dir = new THREE.Vector3(-Math.sin(rotationY.current), 0, -Math.cos(rotationY.current));
+    const direction = movementDirectionRef.current!.set(
+      -Math.sin(rotationY.current),
+      0,
+      -Math.cos(rotationY.current),
+    );
     const previous = { x: pos.x, z: pos.z };
     const movement = moveCircleOnRoad(
       trackDef.geometry,
       previous,
-      { x: dir.x * velocity.current * 60 * dt, z: dir.z * velocity.current * 60 * dt },
+      { x: direction.x * velocity.current * 60 * dt, z: direction.z * velocity.current * 60 * dt },
       CAR_COLLISION_RADIUS,
     );
     pos.x = movement.x;
@@ -128,12 +142,12 @@ function Car({ onLap, onBoostChange, onSpeedChange, racing, trackDef }: CarProps
     }
 
     // Follow camera
-    const idealOffset = new THREE.Vector3(
-      Math.sin(rotationY.current) * 14,
-      6,
-      Math.cos(rotationY.current) * 14
+    const cameraTarget = cameraTargetRef.current!.set(
+      pos.x + Math.sin(rotationY.current) * 14,
+      pos.y + 6,
+      pos.z + Math.cos(rotationY.current) * 14,
     );
-    camera.position.lerp(pos.clone().add(idealOffset), 0.08);
+    camera.position.lerp(cameraTarget, 0.08);
     camera.lookAt(pos.x, 1.5, pos.z);
   });
 

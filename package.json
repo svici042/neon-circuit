@@ -6,20 +6,20 @@
   "packageManager": "npm@11.12.1",
   "engines": { "node": "^20.19.0 || ^22.12.0 || ^24.0.0" },
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 5173",
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "dev:host": "vite --host 0.0.0.0 --port 5173",
     "build": "vite build && node scripts/verify-pages-build.mjs",
-    "preview": "vite preview --host 0.0.0.0 --port 4173",
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "preview:host": "vite preview --host 0.0.0.0 --port 4173",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --max-warnings 0",
-    "test": "vitest run"
+    "test": "vitest run",
+    "archive": "node scripts/create-source-archive.mjs"
   },
   "dependencies": {
     "@react-three/fiber": "^9.7.0",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "tailwind-merge": "^3.3.1",
     "three": "^0.185.1"
   },
   "devDependencies": {

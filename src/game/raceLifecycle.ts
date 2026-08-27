@@ -1,3 +1,8 @@
+/**
+ * Owns countdown/finish timers for one race generation. begin() invalidates the
+ * prior token and cancel() clears every native handle, so stale callbacks can
+ * neither update a restarted race nor complete it twice.
+ */
 export interface TimerScheduler {
   setTimeout(callback: () => void, delay: number): number;
   clearTimeout(id: number): void;

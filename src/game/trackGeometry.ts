@@ -1,3 +1,8 @@
+/**
+ * Pure X/Z-plane geometry and collision helpers. Track dimensions are
+ * half-extents; Three.js Y is reserved for height. The generated road keeps
+ * the original design rule that every authored road width is doubled.
+ */
 export interface Point2 {
   x: number;
   z: number;
@@ -29,6 +34,10 @@ export const CAR_COLLISION_RADIUS = 1.8;
 export const CORNER_SEGMENTS = 12;
 
 export function makeTrackGeometry(outerHalfX: number, outerHalfZ: number, originalRoadWidth: number): TrackGeometry {
+  if (![outerHalfX, outerHalfZ, originalRoadWidth].every(Number.isFinite) ||
+      outerHalfX <= 0 || outerHalfZ <= 0 || originalRoadWidth <= 0) {
+    throw new Error("Track dimensions and road width must be finite and positive");
+  }
   const roadWidth = originalRoadWidth * 2;
   const halfRoad = roadWidth / 2;
   const centerHalfX = outerHalfX - halfRoad;
@@ -38,7 +47,7 @@ export function makeTrackGeometry(outerHalfX: number, outerHalfZ: number, origin
   }
   const maxRadius = Math.min(centerHalfX, centerHalfZ) - 1;
   const cornerRadius = Math.min(maxRadius, Math.max(halfRoad + 2, Math.min(centerHalfX, centerHalfZ) * 0.55));
-  return {
+  const geometry: TrackGeometry = {
     originalRoadWidth,
     roadWidth,
     centerHalfX,
@@ -57,8 +66,14 @@ export function makeTrackGeometry(outerHalfX: number, outerHalfZ: number, origin
     wallThickness: 2,
     wallHeight: 2.2,
   };
+  if (!isValidTrackGeometry(geometry)) throw new Error("Generated track geometry is invalid");
+  return geometry;
 }
 
+/**
+ * Signed distance to a rounded rectangle in world units. Negative values are
+ * inside, zero is on the boundary, and positive values are outside.
+ */
 export function roundedRectSignedDistance(point: Point2, rect: RoundedRect): number {
   const qx = Math.abs(point.x) - rect.halfX + rect.radius;
   const qz = Math.abs(point.z) - rect.halfZ + rect.radius;
@@ -75,6 +90,7 @@ export function isPointOnRoad(geometry: TrackGeometry, point: Point2, clearance 
   );
 }
 
+/** Returns the smallest distance to either road edge; negative means off-road. */
 export function roadClearance(geometry: TrackGeometry, point: Point2): number {
   const outerClearance = -roundedRectSignedDistance(point, geometry.outer);
   const innerClearance = roundedRectSignedDistance(point, geometry.inner);
@@ -118,6 +134,9 @@ export function moveCircleOnRoad(
     return { ...start, collided: true };
   }
   const distance = Math.hypot(delta.x, delta.z);
+  // Substeps keep a circular car collider from tunnelling through a wall when
+  // a frame stalls. At impact, only the wall-normal component is removed so
+  // tangential velocity produces the preserved sliding response.
   const steps = Math.max(1, Math.ceil(distance / Math.max(0.35, radius * 0.4)));
   const step = { x: delta.x / steps, z: delta.z / steps };
   let position = { ...start };
@@ -154,6 +173,10 @@ export function moveCircleOnRoad(
 }
 
 export function sampleRoundedRect(rect: RoundedRect, segmentsPerCorner = CORNER_SEGMENTS): Point2[] {
+  if (!isValidRoundedRect(rect) || !Number.isInteger(segmentsPerCorner) ||
+      segmentsPerCorner < 1 || segmentsPerCorner > 1_024) {
+    throw new Error("Rounded rectangle sampling requires valid dimensions and 1-1024 corner segments");
+  }
   const points: Point2[] = [];
   const corners = [
     { x: rect.halfX - rect.radius, z: rect.halfZ - rect.radius, start: Math.PI / 2, end: 0 },
@@ -173,12 +196,67 @@ export function sampleRoundedRect(rect: RoundedRect, segmentsPerCorner = CORNER_
   return points;
 }
 
+function polygonSignedArea(points: Point2[]): number {
+  let twiceArea = 0;
+  for (let index = 0; index < points.length; index++) {
+    const point = points[index];
+    const next = points[(index + 1) % points.length];
+    twiceArea += point.x * next.z - next.x * point.z;
+  }
+  return twiceArea / 2;
+}
+
+function isValidRoundedRect(rect: RoundedRect): boolean {
+  return [rect.halfX, rect.halfZ, rect.radius].every(Number.isFinite) &&
+    rect.halfX > 0 && rect.halfZ > 0 && rect.radius > 0 &&
+    rect.radius <= Math.min(rect.halfX, rect.halfZ);
+}
+
+/**
+ * Validates a sampled implicit loop. The array does not repeat its first point,
+ * so closure is the last-to-first segment. The seam may be a long straight,
+ * but cannot be an outlier beyond every ordinary segment.
+ */
 export function isClosedLoop(points: Point2[]): boolean {
   if (points.length < 12) return false;
-  return points.every((point, index) => {
+  if (!points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.z))) return false;
+  const segmentLengths = points.map((point, index) => {
     const next = points[(index + 1) % points.length];
-    return Number.isFinite(point.x) && Number.isFinite(point.z) && Math.hypot(next.x - point.x, next.z - point.z) > 0;
+    return Math.hypot(next.x - point.x, next.z - point.z);
   });
+  if (segmentLengths.some((length) => !Number.isFinite(length) || length <= 1e-7)) return false;
+  const seam = segmentLengths.at(-1)!;
+  // Exclude the segment immediately before the seam too: moving only the final
+  // point makes both adjacent segments enormous and must not normalize itself.
+  const ordinaryMaximum = Math.max(...segmentLengths.slice(0, -2));
+  if (seam > ordinaryMaximum * 1.25) return false;
+  return Number.isFinite(polygonSignedArea(points)) && Math.abs(polygonSignedArea(points)) > 1e-6;
+}
+
+/**
+ * Checks dimension ordering and both sampled boundaries before geometry reaches
+ * SVG, collision, or WebGL APIs. Outer and inner loops must share winding and
+ * the outer polygon must enclose a strictly larger area.
+ */
+export function isValidTrackGeometry(geometry: TrackGeometry): boolean {
+  const scalars = [
+    geometry.originalRoadWidth, geometry.roadWidth, geometry.centerHalfX,
+    geometry.centerHalfZ, geometry.cornerRadius, geometry.wallThickness,
+    geometry.wallHeight,
+  ];
+  if (!scalars.every(Number.isFinite) || scalars.some((value) => value <= 0)) return false;
+  if (Math.abs(geometry.roadWidth - geometry.originalRoadWidth * 2) > 1e-7) return false;
+  if (!isValidRoundedRect(geometry.outer) || !isValidRoundedRect(geometry.inner)) return false;
+  if (geometry.outer.halfX <= geometry.inner.halfX || geometry.outer.halfZ <= geometry.inner.halfZ) return false;
+  if (geometry.centerHalfX <= geometry.inner.halfX || geometry.centerHalfX >= geometry.outer.halfX) return false;
+  if (geometry.centerHalfZ <= geometry.inner.halfZ || geometry.centerHalfZ >= geometry.outer.halfZ) return false;
+
+  const outer = sampleRoundedRect(geometry.outer);
+  const inner = sampleRoundedRect(geometry.inner);
+  if (!isClosedLoop(outer) || !isClosedLoop(inner)) return false;
+  const outerArea = polygonSignedArea(outer);
+  const innerArea = polygonSignedArea(inner);
+  return Math.sign(outerArea) === Math.sign(innerArea) && Math.abs(outerArea) > Math.abs(innerArea);
 }
 
 export function pointInRotatedRectangle(
@@ -188,6 +266,8 @@ export function pointInRotatedRectangle(
   depth: number,
   rotationY = 0,
 ): boolean {
+  if (![point.x, point.z, center.x, center.z, width, depth, rotationY].every(Number.isFinite) ||
+      width <= 0 || depth <= 0) return false;
   const dx = point.x - center.x;
   const dz = point.z - center.z;
   const cosine = Math.cos(rotationY);
@@ -198,6 +278,9 @@ export function pointInRotatedRectangle(
 }
 
 export function roundedRectSvgPath(rect: RoundedRect, scale: number): string {
+  if (!isValidRoundedRect(rect) || !Number.isFinite(scale) || scale <= 0) {
+    throw new Error("SVG track paths require valid dimensions and a positive finite scale");
+  }
   const halfX = rect.halfX * scale;
   const halfZ = rect.halfZ * scale;
   const radius = rect.radius * scale;

@@ -1,3 +1,8 @@
+/**
+ * Directed X-axis gates prevent a finish-line oscillation from counting laps.
+ * A lap requires the opposite-side checkpoint first, then the finish crossing
+ * in each gate's authored direction and within its inclusive Z span.
+ */
 import type { Point2 } from "./trackGeometry";
 import type { TrackDef, TrackGate } from "./tracks";
 
@@ -12,6 +17,7 @@ export interface LapUpdate {
 
 export const INITIAL_LAP_PROGRESS: LapProgress = { checkpointPassed: false };
 
+/** Interpolates the swept segment at gate X so large frames cannot skip a gate. */
 export function crossesGate(previous: Point2, current: Point2, gate: TrackGate): boolean {
   const crossedInDirection = gate.direction < 0
     ? previous.x > gate.x && current.x <= gate.x

@@ -1,14 +1,16 @@
+/**
+ * Touch and orientation adapters write to the shared controls object consumed
+ * by RacingGame. Pointer capture handles releases outside a button, while the
+ * request generation below prevents a late sensor-permission result from
+ * reinstalling listeners after the controls have been hidden or unmounted.
+ */
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { controls, deviceOrientationSupported, gyroGamma, requestGyroPermission, resetControls, setupGyroControls } from "./controls";
+import { hexToRgb } from "./color";
 
 interface TouchControlsProps { accentColor: string; visible: boolean; }
 type ControlKey = keyof typeof controls;
 type GyroStatus = "idle" | "checking" | "denied" | "unavailable" | "active";
-
-function hexToRgb(hex: string): string {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result ? `${parseInt(result[1], 16)},${parseInt(result[2], 16)},${parseInt(result[3], 16)}` : "0,238,255";
-}
 
 function TouchButton({ label, accessibleName, controlKey, style, accentColor }: {
   label: string; accessibleName: string; controlKey: ControlKey; style: CSSProperties; accentColor: string;
@@ -61,26 +63,44 @@ export default function TouchControls({ accentColor, visible }: TouchControlsPro
   const [gyroStatus, setGyroStatus] = useState<GyroStatus>(() => deviceOrientationSupported() ? "idle" : "unavailable");
   const cleanupGyroRef = useRef<(() => void) | null>(null);
   const statusTimerRef = useRef<number | null>(null);
+  const gyroRequestRef = useRef(0);
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
   const stopGyro = useCallback(() => {
+    gyroRequestRef.current += 1;
     cleanupGyroRef.current?.(); cleanupGyroRef.current = null;
+    if (statusTimerRef.current !== null) clearTimeout(statusTimerRef.current);
+    statusTimerRef.current = null;
     setGyroStatus(deviceOrientationSupported() ? "idle" : "unavailable");
   }, []);
   const toggleGyro = useCallback(async () => {
     if (gyroStatus === "active" || gyroStatus === "checking") { stopGyro(); return; }
     if (!deviceOrientationSupported()) { setGyroStatus("unavailable"); return; }
+    const request = ++gyroRequestRef.current;
     setGyroStatus("checking");
-    if (!(await requestGyroPermission())) { setGyroStatus("denied"); return; }
+    if (!(await requestGyroPermission())) {
+      if (request === gyroRequestRef.current && visibleRef.current) setGyroStatus("denied");
+      return;
+    }
+    if (request !== gyroRequestRef.current || !visibleRef.current) return;
     let verified = false;
     cleanupGyroRef.current = setupGyroControls(() => {
+      if (request !== gyroRequestRef.current || !visibleRef.current) return;
       verified = true; setGyroStatus("active");
       if (statusTimerRef.current !== null) clearTimeout(statusTimerRef.current);
+      statusTimerRef.current = null;
     });
     statusTimerRef.current = window.setTimeout(() => {
-      if (!verified) { cleanupGyroRef.current?.(); cleanupGyroRef.current = null; setGyroStatus("unavailable"); }
+      statusTimerRef.current = null;
+      if (!verified && request === gyroRequestRef.current) {
+        cleanupGyroRef.current?.(); cleanupGyroRef.current = null;
+        setGyroStatus("unavailable");
+      }
     }, 1500);
   }, [gyroStatus, stopGyro]);
   useEffect(() => { if (!visible) { stopGyro(); resetControls(); } }, [visible, stopGyro]);
   useEffect(() => () => {
+    gyroRequestRef.current += 1;
     cleanupGyroRef.current?.();
     if (statusTimerRef.current !== null) clearTimeout(statusTimerRef.current);
     resetControls();

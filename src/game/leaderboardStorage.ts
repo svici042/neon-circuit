@@ -1,3 +1,8 @@
+/**
+ * Defensive localStorage boundary for the client-only leaderboard. Persisted
+ * data is untrusted: reads are size-bounded before parsing, every field is
+ * normalized against current tracks, and quota/privacy failures stay recoverable.
+ */
 import { TRACKS } from "./tracks";
 
 export const LEADERBOARD_STORAGE_KEY = "futuristic-racing-leaderboard-v3";
@@ -6,6 +11,7 @@ export const MAX_RESULTS_PER_TRACK = 10;
 export const MAX_TOTAL_RESULTS = 50;
 const MAX_TOTAL_TIME = 24 * 60 * 60 * 1_000;
 const MAX_LAP_TIME = 6 * 60 * 60 * 1_000;
+export const MAX_STORED_CHARACTERS = 100_000;
 
 export interface LeaderboardEntry {
   id: string;
@@ -82,7 +88,8 @@ export function loadLeaderboard(storage?: StorageLike): LeaderboardEntry[] {
   try {
     const target = storage ?? globalThis.localStorage;
     const raw = target.getItem(LEADERBOARD_STORAGE_KEY) ?? target.getItem(LEGACY_STORAGE_KEY);
-    return raw ? normalizeLeaderboard(JSON.parse(raw) as unknown) : [];
+    if (!raw || raw.length > MAX_STORED_CHARACTERS) return [];
+    return normalizeLeaderboard(JSON.parse(raw) as unknown);
   } catch {
     return [];
   }

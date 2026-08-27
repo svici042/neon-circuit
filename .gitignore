@@ -11,6 +11,7 @@ coverage/
 .cache/
 .parcel-cache/
 .turbo/
+.bundle-analysis/
 
 # Logs and diagnostics
 logs/
@@ -40,3 +41,6 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Generated source archives (the archive command writes to the parent directory by default)
+*.zip
