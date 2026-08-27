@@ -1,27 +1,16 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import RacingGame from "@/game/RacingGame";
 import HUD from "@/game/HUD";
-import Leaderboard, { LeaderboardEntry } from "@/game/Leaderboard";
+import Leaderboard from "@/game/Leaderboard";
 import ErrorBoundary from "@/game/ErrorBoundary";
 import { TRACKS, type TrackDef } from "@/game/tracks";
 import { AudioEngine } from "@/game/AudioEngine";
+import { createLeaderboardEntry, loadLeaderboard, normalizeLeaderboard, saveLeaderboard, type LeaderboardEntry } from "@/game/leaderboardStorage";
+import { resetControls } from "@/game/controls";
+import { RaceClock } from "@/game/time";
+import { RaceLifecycle } from "@/game/raceLifecycle";
 
 const TOTAL_LAPS = 3;
-const STORAGE_KEY = "futuristic-racing-leaderboard-v2";
-
-function loadLeaderboard(): LeaderboardEntry[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as LeaderboardEntry[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveLeaderboard(entries: LeaderboardEntry[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-}
-
 type GameState = "menu" | "countdown" | "racing" | "finished";
 
 interface PauseMenuProps {
@@ -35,7 +24,9 @@ interface PauseMenuProps {
 function PauseMenu({ accentColor, onResume, onRestart, onChangeTrack, onCancel }: PauseMenuProps) {
   const btn = (label: string, onClick: () => void, primary = false) => (
     <button
+      type="button"
       onClick={onClick}
+      autoFocus={primary}
       style={{
         width: "100%",
         padding: "13px",
@@ -68,6 +59,9 @@ function PauseMenu({ accentColor, onResume, onRestart, onChangeTrack, onCancel }
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pause-title"
       style={{
         position: "absolute",
         inset: 0,
@@ -93,6 +87,7 @@ function PauseMenu({ accentColor, onResume, onRestart, onChangeTrack, onCancel }
         }}
       >
         <div
+          id="pause-title"
           style={{
             textAlign: "center",
             fontSize: 11,
@@ -172,6 +167,7 @@ function TrackCard({
   return (
     <button
       onClick={onClick}
+      type="button"
       style={{
         background: selected ? `rgba(${hexToRgb(accentColor)}, 0.1)` : "rgba(0,0,0,0.35)",
         border: `1.5px solid ${selected ? accentColor : "#ffffff18"}`,
@@ -241,65 +237,89 @@ export default function GamePage() {
   const [boosting, setBoosting] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>(loadLeaderboard);
   const [latestEntry, setLatestEntry] = useState<LeaderboardEntry | undefined>();
-  const [isTouchDevice] = useState(() => window.matchMedia("(pointer: coarse)").matches);
+  const [isTouchDevice, setIsTouchDevice] = useState(() => window.matchMedia("(pointer: coarse)").matches);
   const [muted, setMuted] = useState(false);
+  const [storageWarning, setStorageWarning] = useState<string>();
 
-  const raceStartRef = useRef<number>(0);
-  const lapStartRef = useRef<number>(0);
   const lapTimesRef = useRef<number[]>([]);
-  const audioRef = useRef<AudioEngine>(new AudioEngine());
+  const audioRef = useRef<AudioEngine | null>(null);
+  const clockRef = useRef<RaceClock | null>(null);
+  const lifecycleRef = useRef<RaceLifecycle | null>(null);
+  if (audioRef.current === null) audioRef.current = new AudioEngine();
+  if (clockRef.current === null) clockRef.current = new RaceClock();
+  if (lifecycleRef.current === null) lifecycleRef.current = new RaceLifecycle();
   const rafRef = useRef<number>(0);
-  const pauseStartRef = useRef<number>(0);
+  const currentLapRef = useRef(0);
+  const currentRaceTokenRef = useRef(0);
+  const completionPendingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const gameStateRef = useRef<GameState>("menu");
+  const pausedRef = useRef(false);
+  const focusBeforePauseRef = useRef<HTMLElement | null>(null);
+
+  const clearPendingTimers = useCallback(() => {
+    lifecycleRef.current!.cancel();
+  }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia("(pointer: coarse)");
+    const update = () => setIsTouchDevice(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    if (audioRef.current === null) audioRef.current = new AudioEngine();
+    const audio = audioRef.current;
+    return () => {
+      mountedRef.current = false;
+      clearPendingTimers();
+      cancelAnimationFrame(rafRef.current);
+      resetControls();
+      if (audioRef.current === audio) audioRef.current = null;
+      void audio.destroy();
+    };
+  }, [clearPendingTimers]);
 
   // Timer tick — stops when paused
   useEffect(() => {
     if (gameState !== "racing" || paused) return;
     const tick = () => {
-      const now = Date.now();
-      setLapTime(now - lapStartRef.current);
-      setTotalTime(now - raceStartRef.current);
+      const snapshot = clockRef.current!.snapshot();
+      setLapTime(snapshot.lapTime);
+      setTotalTime(snapshot.totalTime);
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
   }, [gameState, paused]);
 
-  // ESC key toggles pause
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code === "Escape" && gameState === "racing") {
-        setPaused((p) => {
-          if (!p) {
-            pauseStartRef.current = Date.now();
-          } else {
-            const elapsed = Date.now() - pauseStartRef.current;
-            lapStartRef.current += elapsed;
-            raceStartRef.current += elapsed;
-          }
-          return !p;
-        });
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [gameState]);
-
   // Pause/resume audio with game pause
   useEffect(() => {
     if (gameState !== "racing") return;
     if (paused) {
-      audioRef.current.pauseAudio();
+      void audioRef.current?.pauseAudio();
     } else {
-      audioRef.current.resumeAudio();
+      void audioRef.current?.resumeAudio();
     }
   }, [paused, gameState]);
 
   const startCountdown = useCallback(() => {
-    audioRef.current.init();
-    audioRef.current.stopMusic();
-    audioRef.current.startMusic();
+    const generation = lifecycleRef.current!.begin();
+    currentRaceTokenRef.current = generation;
+    resetControls();
+    clockRef.current!.reset();
+    audioRef.current!.stopMusic();
+    audioRef.current!.stopEngine();
+    void audioRef.current!.init().then((ready) => {
+      if (ready && mountedRef.current && lifecycleRef.current?.isCurrent(generation)) audioRef.current?.startMusic();
+    });
 
+    gameStateRef.current = "countdown";
     setGameState("countdown");
+    pausedRef.current = false;
+    setPaused(false);
     setCountdown(3);
     setCurrentLap(0);
     setLapTime(0);
@@ -308,89 +328,102 @@ export default function GamePage() {
     setTotalTime(0);
     setSpeed(0);
     setBoosting(false);
+    setLatestEntry(undefined);
+    setStorageWarning(undefined);
     lapTimesRef.current = [];
+    currentLapRef.current = 0;
+    completionPendingRef.current = false;
 
-    let count = 3;
-    const interval = setInterval(() => {
-      count--;
-      if (count <= 0) {
-        clearInterval(interval);
-        setCountdown(0);
-        const now = Date.now();
-        raceStartRef.current = now;
-        lapStartRef.current = now;
-        setGameState("racing");
-      } else {
-        setCountdown(count);
-      }
-    }, 1000);
-  }, []);
+    const deadline = performance.now() + 3000;
+    const countdownInterval = lifecycleRef.current!.setInterval(generation, () => {
+      setCountdown(Math.max(1, Math.ceil((deadline - performance.now()) / 1000)));
+    }, 100);
+    lifecycleRef.current!.setTimeout(generation, () => {
+      if (!mountedRef.current) return;
+      lifecycleRef.current!.clearInterval(countdownInterval);
+      clockRef.current!.start();
+      setCountdown(0);
+      gameStateRef.current = "racing";
+      setGameState("racing");
+    }, 3000);
+  }, [clearPendingTimers]);
 
   const handleLap = useCallback(
-    (lapTimeMs: number) => {
-      setCurrentLap((prev) => {
-        const newLap = prev + 1;
-        lapTimesRef.current.push(lapTimeMs);
-        setLastLapTime(lapTimeMs);
-        setBestLapTime((best) => (best === null ? lapTimeMs : Math.min(best, lapTimeMs)));
-        lapStartRef.current = Date.now();
+    () => {
+      if (gameStateRef.current !== "racing" || pausedRef.current || completionPendingRef.current) return;
+      const completedLap = clockRef.current!.completeLap();
+      if (!Number.isFinite(completedLap) || completedLap <= 0) return;
+      const newLap = currentLapRef.current + 1;
+      currentLapRef.current = newLap;
+      lapTimesRef.current.push(completedLap);
+      setCurrentLap(newLap);
+      setLastLapTime(completedLap);
+      setBestLapTime((best) => best === null ? completedLap : Math.min(best, completedLap));
 
-        if (newLap >= TOTAL_LAPS) {
-          setTimeout(() => {
-            audioRef.current.stopMusic();
-            audioRef.current.stopEngine();
-            const totalRaceTime = Date.now() - raceStartRef.current;
-            const allLaps = lapTimesRef.current;
-            const best = allLaps.length > 0 ? Math.min(...allLaps) : totalRaceTime;
-            const entry: LeaderboardEntry = {
-              name: selectedTrack.name,
-              totalTime: totalRaceTime,
-              bestLap: best,
-              date: new Date().toLocaleDateString(),
-            };
-            setLatestEntry(entry);
-            setLeaderboard((prev) => {
-              const updated = [...prev, entry];
-              saveLeaderboard(updated);
-              return updated;
-            });
-            setGameState("finished");
-          }, 500);
-        }
-        return newLap;
-      });
+      if (newLap >= TOTAL_LAPS) {
+        const generation = currentRaceTokenRef.current;
+        if (!lifecycleRef.current!.claimCompletion(generation)) return;
+        completionPendingRef.current = true;
+        const totalRaceTime = clockRef.current!.snapshot().totalTime;
+        lifecycleRef.current!.setTimeout(generation, () => {
+          if (!mountedRef.current || gameStateRef.current !== "racing") return;
+          audioRef.current?.stopMusic();
+          audioRef.current?.stopEngine();
+          resetControls();
+          const best = Math.min(...lapTimesRef.current);
+          const entry = createLeaderboardEntry(selectedTrack.id, totalRaceTime, best);
+          const updated = normalizeLeaderboard([...leaderboard, entry]);
+          setLatestEntry(entry);
+          if (saveLeaderboard(updated)) {
+            setLeaderboard(updated);
+          } else {
+            setStorageWarning("Result shown, but this browser could not save it.");
+          }
+          gameStateRef.current = "finished";
+          setGameState("finished");
+        }, 500);
+      }
     },
-    [selectedTrack]
+    [leaderboard, selectedTrack.id]
   );
 
   const handleSpeedChange = useCallback((s: number) => {
     setSpeed(s);
-    audioRef.current.setSpeed(s);
+    audioRef.current?.setSpeed(s);
   }, []);
 
   const handleBoostChange = useCallback((b: boolean) => {
     setBoosting(b);
-    if (b) audioRef.current.playBoost();
+    if (b) audioRef.current?.playBoost();
   }, []);
 
   const handlePause = useCallback(() => {
-    setPaused((p) => {
-      if (!p) pauseStartRef.current = Date.now();
-      else {
-        const elapsed = Date.now() - pauseStartRef.current;
-        lapStartRef.current += elapsed;
-        raceStartRef.current += elapsed;
-      }
-      return !p;
-    });
+    if (gameStateRef.current !== "racing" || completionPendingRef.current) return;
+    if (pausedRef.current) {
+      clockRef.current!.resume();
+      pausedRef.current = false;
+      setPaused(false);
+      window.setTimeout(() => focusBeforePauseRef.current?.focus(), 0);
+    } else {
+      focusBeforePauseRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      clockRef.current!.pause();
+      pausedRef.current = true;
+      resetControls();
+      setPaused(true);
+    }
   }, []);
 
   const handleResume = useCallback(() => {
-    const elapsed = Date.now() - pauseStartRef.current;
-    lapStartRef.current += elapsed;
-    raceStartRef.current += elapsed;
-    setPaused(false);
-  }, []);
+    if (pausedRef.current) handlePause();
+  }, [handlePause]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.code === "Escape" && gameStateRef.current === "racing") handlePause(); };
+    const onVisibility = () => { if (document.hidden && gameStateRef.current === "racing" && !pausedRef.current) handlePause(); };
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { window.removeEventListener("keydown", onKey); document.removeEventListener("visibilitychange", onVisibility); };
+  }, [handlePause]);
 
   const handleRestart = useCallback(() => {
     setPaused(false);
@@ -398,25 +431,26 @@ export default function GamePage() {
   }, [startCountdown]);
 
   const handleChangeTrack = useCallback(() => {
+    clearPendingTimers();
+    clockRef.current!.reset();
+    pausedRef.current = false;
+    resetControls();
     setPaused(false);
-    audioRef.current.stopMusic();
-    audioRef.current.stopEngine();
-    audioRef.current.resumeAudio();
+    audioRef.current?.stopMusic();
+    audioRef.current?.stopEngine();
+    void audioRef.current?.resumeAudio();
+    gameStateRef.current = "menu";
     setGameState("menu");
-  }, []);
+  }, [clearPendingTimers]);
 
   const handleCancel = useCallback(() => {
-    setPaused(false);
-    audioRef.current.stopMusic();
-    audioRef.current.stopEngine();
-    audioRef.current.resumeAudio();
-    setGameState("menu");
-  }, []);
+    handleChangeTrack();
+  }, [handleChangeTrack]);
 
   const handleMuteToggle = useCallback(() => {
     setMuted((m) => {
       const next = !m;
-      audioRef.current.setMuted(next);
+      audioRef.current?.setMuted(next);
       return next;
     });
   }, []);
@@ -427,7 +461,7 @@ export default function GamePage() {
     <div
       style={{
         width: "100vw",
-        height: "100vh",
+        height: "100dvh",
         background: "#0a0a28",
         position: "relative",
         overflow: "hidden",
@@ -468,6 +502,9 @@ export default function GamePage() {
       {/* Mute button — visible during racing/countdown */}
       {(gameState === "racing" || gameState === "countdown") && !paused && (
         <button
+          type="button"
+          aria-label={muted ? "Unmute audio" : "Mute audio"}
+          aria-pressed={muted}
           onClick={handleMuteToggle}
           title={muted ? "Įjungti garsą" : "Išjungti garsą"}
           style={{
@@ -502,6 +539,8 @@ export default function GamePage() {
       {/* Pause button — visible during racing */}
       {gameState === "racing" && !paused && (
         <button
+          type="button"
+          aria-label="Pause race"
           onClick={handlePause}
           style={{
             position: "absolute",
@@ -663,6 +702,7 @@ export default function GamePage() {
 
           {/* Start button */}
           <button
+            type="button"
             onClick={startCountdown}
             style={{
               width: "100%",
@@ -710,8 +750,9 @@ export default function GamePage() {
         <Leaderboard
           entries={leaderboard}
           latestEntry={latestEntry}
-          onPlay={() => setGameState("menu")}
+          onPlay={handleChangeTrack}
           title="RACE COMPLETE"
+          storageWarning={storageWarning}
         />
       )}
     </div>

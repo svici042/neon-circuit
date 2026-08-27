@@ -1,30 +1,35 @@
-export interface LeaderboardEntry {
-  name: string;
-  totalTime: number;
-  bestLap: number;
-  date: string;
-}
+import { useEffect, useRef } from "react";
+import { type LeaderboardEntry } from "./leaderboardStorage";
+import { formatTime } from "./time";
 
-function formatTime(ms: number): string {
-  if (ms <= 0) return "0:00.000";
-  const m = Math.floor(ms / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  const mil = ms % 1000;
-  return `${m}:${String(s).padStart(2, "0")}.${String(mil).padStart(3, "0")}`;
-}
+export type { LeaderboardEntry } from "./leaderboardStorage";
 
 interface LeaderboardProps {
   entries: LeaderboardEntry[];
   latestEntry?: LeaderboardEntry;
   onPlay: () => void;
   title: string;
+  storageWarning?: string;
 }
 
-export default function Leaderboard({ entries, latestEntry, onPlay, title }: LeaderboardProps) {
+export default function Leaderboard({ entries, latestEntry, onPlay, title, storageWarning }: LeaderboardProps) {
   const sorted = [...entries].sort((a, b) => a.totalTime - b.totalTime);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    dialogRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "Escape") onPlay();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onPlay]);
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="results-title"
       style={{
         position: "absolute",
         inset: 0,
@@ -37,6 +42,9 @@ export default function Leaderboard({ entries, latestEntry, onPlay, title }: Lea
       }}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="leaderboard-panel"
         style={{
           width: 520,
           maxWidth: "92vw",
@@ -48,6 +56,7 @@ export default function Leaderboard({ entries, latestEntry, onPlay, title }: Lea
         }}
       >
         <h1
+          id="results-title"
           style={{
             textAlign: "center",
             fontSize: 32,
@@ -86,8 +95,11 @@ export default function Leaderboard({ entries, latestEntry, onPlay, title }: Lea
           </div>
         )}
 
+        {storageWarning && <p role="status" className="storage-warning">{storageWarning}</p>}
+
         <div style={{ marginBottom: 28 }}>
           <div
+            className="leaderboard-header"
             style={{
               display: "grid",
               gridTemplateColumns: "40px 1fr 130px 130px",
@@ -111,7 +123,8 @@ export default function Leaderboard({ entries, latestEntry, onPlay, title }: Lea
           ) : (
             sorted.slice(0, 10).map((entry, i) => (
               <div
-                key={i}
+                key={entry.id}
+                className="leaderboard-row"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "40px 1fr 130px 130px",
@@ -134,7 +147,7 @@ export default function Leaderboard({ entries, latestEntry, onPlay, title }: Lea
                 >
                   {i + 1}
                 </span>
-                <span style={{ fontSize: 13, color: "#ffffff88" }}>{entry.date}</span>
+                <span style={{ fontSize: 13, color: "#ffffff88" }}>{new Date(entry.date).toLocaleDateString()}</span>
                 <span style={{ fontSize: 14, color: "#00eeff", textAlign: "right" }}>
                   {formatTime(entry.bestLap)}
                 </span>
@@ -154,6 +167,7 @@ export default function Leaderboard({ entries, latestEntry, onPlay, title }: Lea
         </div>
 
         <button
+          type="button"
           onClick={onPlay}
           style={{
             width: "100%",

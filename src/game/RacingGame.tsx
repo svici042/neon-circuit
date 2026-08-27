@@ -3,7 +3,7 @@ import { useRef, useEffect } from "react";
 import * as THREE from "three";
 import Track from "./Track";
 import TouchControls from "./TouchControls";
-import { controls, setupKeyboardControls } from "./controls";
+import { controls, resetControls, setKeyboardControlsEnabled, setupKeyboardControls } from "./controls";
 import type { TrackDef } from "./tracks";
 
 const MAX_SPEED = 0.35;
@@ -37,7 +37,7 @@ function isInBoostPad(x: number, z: number, pads: TrackDef["boostPads"]): boolea
 }
 
 interface CarProps {
-  onLap: (lapTimeMs: number) => void;
+  onLap: () => void;
   onBoostChange: (boosting: boolean) => void;
   onSpeedChange: (speed: number) => void;
   racing: boolean;
@@ -52,7 +52,6 @@ function Car({ onLap, onBoostChange, onSpeedChange, racing, trackDef }: CarProps
   const boostEndRef = useRef(0);
   const checkpointRef = useRef(false);
   const prevXRef = useRef(trackDef.carStart.x);
-  const lapStartRef = useRef(Date.now());
   const lapCooldownRef = useRef(0);
 
   const { camera } = useThree();
@@ -65,18 +64,18 @@ function Car({ onLap, onBoostChange, onSpeedChange, racing, trackDef }: CarProps
     velocity.current = 0;
     checkpointRef.current = false;
     prevXRef.current = x;
-    lapStartRef.current = Date.now();
+    lapCooldownRef.current = 0;
     boostRef.current = false;
     onBoostChange(false);
     onSpeedChange(0);
-  }, [trackDef]);
+  }, [onBoostChange, onSpeedChange, trackDef]);
 
   useFrame((_, delta) => {
     if (!carRef.current || !racing) return;
 
     const dt = Math.min(delta, 0.05);
     const pos = carRef.current.position;
-    const now = Date.now();
+    const now = performance.now();
 
     // Boost timeout
     if (boostRef.current && now > boostEndRef.current) {
@@ -153,9 +152,7 @@ function Car({ onLap, onBoostChange, onSpeedChange, racing, trackDef }: CarProps
       pos.z >= fin.zMin &&
       pos.z <= fin.zMax
     ) {
-      const lapTime = now - lapStartRef.current;
-      onLap(lapTime);
-      lapStartRef.current = now;
+      onLap();
       checkpointRef.current = false;
       lapCooldownRef.current = now + 5000;
     }
@@ -212,7 +209,7 @@ function Environment({ trackDef }: { trackDef: TrackDef }) {
 }
 
 interface RacingGameProps {
-  onLap: (lapTimeMs: number) => void;
+  onLap: () => void;
   onBoostChange: (boosting: boolean) => void;
   onSpeedChange: (speed: number) => void;
   racing: boolean;
@@ -233,6 +230,12 @@ export default function RacingGame({
   trackDef,
   showTouchControls,
 }: RacingGameProps) {
+  useEffect(() => {
+    setKeyboardControlsEnabled(racing);
+    if (!racing) resetControls();
+    return () => setKeyboardControlsEnabled(false);
+  }, [racing]);
+
   return (
     <>
       <KeyboardSetup />

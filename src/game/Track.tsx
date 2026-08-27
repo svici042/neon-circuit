@@ -97,7 +97,7 @@ interface TrackProps {
 }
 
 export default function Track({ trackDef }: TrackProps) {
-  const { accentColor, groundColor, roads, outerWalls, innerWalls, boostPads, carStart, finish } = trackDef;
+  const { accentColor, groundColor, roads, outerWalls, innerWalls, boostPads, finish } = trackDef;
   const finishZ = (finish.zMin + finish.zMax) / 2;
 
   // Compute outer edge lines from outer walls

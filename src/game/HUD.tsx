@@ -1,3 +1,5 @@
+import { formatTime } from "./time";
+
 interface HUDProps {
   speed: number;
   lap: number;
@@ -9,14 +11,6 @@ interface HUDProps {
   boosting: boolean;
   countdown: number;
   isTouchDevice?: boolean;
-}
-
-function formatTime(ms: number): string {
-  if (ms <= 0) return "0:00.000";
-  const m = Math.floor(ms / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  const mil = ms % 1000;
-  return `${m}:${String(s).padStart(2, "0")}.${String(mil).padStart(3, "0")}`;
 }
 
 export default function HUD({
@@ -171,40 +165,12 @@ export default function HUD({
         <div style={{ fontSize: "clamp(14px,2.5vmin,22px)", color: "#ffffff", fontWeight: "bold" }}>{formatTime(totalTime)}</div>
       </div>
 
-      {/* Copyright bar */}
-      <div
-        style={{
-          position: "absolute",
-          left: 16,
-          right: 16,
-          bottom: 8,
-          pointerEvents: "none",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 10,
-          fontFamily: "'Courier New', monospace",
-          color: "#ffffff55",
-          fontSize: 12,
-          letterSpacing: 1,
-          textShadow: "0 0 10px #00000088",
-          zIndex: 12,
-        }}
-      >
-        <img
-          src="/Media/LovLaus%20logo.png"
-          alt="LovLaus logo"
-          style={{ width: 22, height: 22, borderRadius: 4, filter: "drop-shadow(0 0 8px #00eeff55)" }}
-        />
-        <div>© {new Date().getFullYear()} LovLaus Media</div>
-      </div>
-
       {/* Controls hint — hidden on touch devices */}
       {!isTouchDevice && (
         <div
           style={{
             position: "absolute",
-            bottom: "clamp(36px,5vmin,48px)",
+            bottom: "clamp(12px,2vmin,24px)",
             right: "clamp(12px,2vw,24px)",
             background: "rgba(0,0,0,0.5)",
             border: "1px solid #ffffff11",

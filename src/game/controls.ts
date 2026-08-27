@@ -5,96 +5,102 @@ export const controls = {
   right: false,
 };
 
+type ControlKey = keyof typeof controls;
+const keyboardCodes: Record<string, ControlKey> = {
+  ArrowUp: "forward", KeyW: "forward", ArrowDown: "backward", KeyS: "backward",
+  ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right",
+};
+let keyboardEnabled = false;
+
+export function resetControls(): void {
+  controls.forward = false;
+  controls.backward = false;
+  controls.left = false;
+  controls.right = false;
+  gyroGamma = 0;
+}
+
+export function setKeyboardControlsEnabled(enabled: boolean): void {
+  keyboardEnabled = enabled;
+  if (!enabled) resetControls();
+}
+
 export function setupKeyboardControls(): () => void {
-  const down = (e: KeyboardEvent) => {
-    if (e.code === "ArrowUp" || e.code === "KeyW") controls.forward = true;
-    if (e.code === "ArrowDown" || e.code === "KeyS") controls.backward = true;
-    if (e.code === "ArrowLeft" || e.code === "KeyA") controls.left = true;
-    if (e.code === "ArrowRight" || e.code === "KeyD") controls.right = true;
+  const down = (event: KeyboardEvent) => {
+    const control = keyboardCodes[event.code];
+    if (!keyboardEnabled || !control) return;
+    if (event.code.startsWith("Arrow")) event.preventDefault();
+    controls[control] = true;
   };
-  const up = (e: KeyboardEvent) => {
-    if (e.code === "ArrowUp" || e.code === "KeyW") controls.forward = false;
-    if (e.code === "ArrowDown" || e.code === "KeyS") controls.backward = false;
-    if (e.code === "ArrowLeft" || e.code === "KeyA") controls.left = false;
-    if (e.code === "ArrowRight" || e.code === "KeyD") controls.right = false;
+  const up = (event: KeyboardEvent) => {
+    const control = keyboardCodes[event.code];
+    if (!control) return;
+    if (keyboardEnabled && event.code.startsWith("Arrow")) event.preventDefault();
+    controls[control] = false;
   };
-  window.addEventListener("keydown", down);
-  window.addEventListener("keyup", up);
+  const reset = () => resetControls();
+  const visibility = () => { if (document.hidden) resetControls(); };
+  window.addEventListener("keydown", down, { passive: false });
+  window.addEventListener("keyup", up, { passive: false });
+  window.addEventListener("blur", reset);
+  document.addEventListener("visibilitychange", visibility);
   return () => {
     window.removeEventListener("keydown", down);
     window.removeEventListener("keyup", up);
+    window.removeEventListener("blur", reset);
+    document.removeEventListener("visibilitychange", visibility);
+    resetControls();
   };
 }
 
 const GYRO_DEAD_ZONE = 7;
-
-// Raw steering value for the tilt indicator (positive = right, negative = left)
 export let gyroGamma = 0;
 
+export function deviceOrientationSupported(): boolean {
+  return typeof window !== "undefined" && "DeviceOrientationEvent" in window;
+}
+
 export async function requestGyroPermission(): Promise<boolean> {
-  if (
-    typeof DeviceOrientationEvent !== "undefined" &&
-    typeof (DeviceOrientationEvent as unknown as { requestPermission?: () => Promise<string> })
-      .requestPermission === "function"
-  ) {
-    try {
-      const result = await (
-        DeviceOrientationEvent as unknown as { requestPermission: () => Promise<string> }
-      ).requestPermission();
-      return result === "granted";
-    } catch {
-      return false;
-    }
+  if (!deviceOrientationSupported()) return false;
+  const orientationEvent = DeviceOrientationEvent as typeof DeviceOrientationEvent & {
+    requestPermission?: () => Promise<"granted" | "denied">;
+  };
+  if (typeof orientationEvent.requestPermission !== "function") return true;
+  try {
+    return (await orientationEvent.requestPermission()) === "granted";
+  } catch {
+    return false;
   }
-  return true;
 }
 
-/**
- * Returns the current screen orientation angle in degrees.
- * 0   = portrait upright
- * 90  = landscape, device top points LEFT  (rotated counterclockwise)
- * 270 = landscape, device top points RIGHT (rotated clockwise)
- * 180 = portrait upside-down
- */
-function getOrientationAngle(): number {
-  if (screen.orientation && typeof screen.orientation.angle === "number") {
-    return screen.orientation.angle;
-  }
-  // Fallback for older Safari: window.orientation is deprecated but still works
-  const wo = (window as unknown as { orientation?: number }).orientation;
-  if (typeof wo === "number") {
-    // window.orientation: 90 = top points right, -90 = top points left
-    // Map to screen.orientation.angle convention
-    if (wo === 90) return 270;   // top points right → angle 270
-    if (wo === -90) return 90;   // top points left  → angle 90
-    return wo;
-  }
-  return 0;
+export function getOrientationAngle(): number {
+  const screenAngle = globalThis.screen?.orientation?.angle;
+  if (typeof screenAngle === "number") return ((screenAngle % 360) + 360) % 360;
+  const legacy = (window as typeof window & { orientation?: number }).orientation;
+  return typeof legacy === "number" ? ((legacy % 360) + 360) % 360 : 0;
 }
 
-export function setupGyroControls(): () => void {
-  const handle = (e: DeviceOrientationEvent) => {
-    const angle = getOrientationAngle();
-    let steer: number;
+export function mapOrientationToSteering(beta: number | null, gamma: number | null, angle: number): number {
+  const normalized = ((angle % 360) + 360) % 360;
+  if (normalized === 90) return -(beta ?? 0);
+  if (normalized === 180) return -(gamma ?? 0);
+  if (normalized === 270) return beta ?? 0;
+  return gamma ?? 0;
+}
 
-    if (angle === 90) {
-      // Top of device points LEFT — visual left-right = negative beta
-      // Tilting landscape screen left → physical top goes down → beta decreases
-      steer = -(e.beta ?? 0);
-    } else if (angle === 270) {
-      // Top of device points RIGHT — visual left-right = positive beta
-      // Tilting landscape screen left → physical bottom goes down → beta increases
-      steer = e.beta ?? 0;
-    } else {
-      // Portrait (0 or 180) — use gamma as normal
-      steer = e.gamma ?? 0;
-    }
-
+export function setupGyroControls(onReading?: () => void): () => void {
+  let receivedReading = false;
+  const handle = (event: DeviceOrientationEvent) => {
+    if (event.beta === null && event.gamma === null) return;
+    const steer = mapOrientationToSteering(event.beta, event.gamma, getOrientationAngle());
     gyroGamma = steer;
     controls.left = steer < -GYRO_DEAD_ZONE;
     controls.right = steer > GYRO_DEAD_ZONE;
+    if (!receivedReading) {
+      receivedReading = true;
+      onReading?.();
+    }
   };
-
   window.addEventListener("deviceorientation", handle, true);
   return () => {
     window.removeEventListener("deviceorientation", handle, true);
