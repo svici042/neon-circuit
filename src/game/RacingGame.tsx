@@ -4,6 +4,8 @@ import * as THREE from "three";
 import Track from "./Track";
 import TouchControls from "./TouchControls";
 import { controls, resetControls, setKeyboardControlsEnabled, setupKeyboardControls } from "./controls";
+import { INITIAL_LAP_PROGRESS, updateLapProgress, type LapProgress } from "./lapDetection";
+import { CAR_COLLISION_RADIUS, moveCircleOnRoad, pointInRotatedRectangle } from "./trackGeometry";
 import type { TrackDef } from "./tracks";
 
 const MAX_SPEED = 0.35;
@@ -14,26 +16,14 @@ const FRICTION = 0.008;
 const TURN_SPEED = 0.038;
 const BOOST_DURATION = 3000;
 
-function isOnTrack(x: number, z: number, zones: TrackDef["collisionZones"]): boolean {
-  for (const [x1, x2, z1, z2] of zones) {
-    if (x >= x1 && x <= x2 && z >= z1 && z <= z2) return true;
-  }
-  return false;
-}
-
 function isInBoostPad(x: number, z: number, pads: TrackDef["boostPads"]): boolean {
-  for (const pad of pads) {
-    const hw = pad.size[0] / 2;
-    const hd = pad.size[2] / 2;
-    if (
-      x >= pad.position[0] - hw &&
-      x <= pad.position[0] + hw &&
-      z >= pad.position[2] - hd &&
-      z <= pad.position[2] + hd
-    )
-      return true;
-  }
-  return false;
+  return pads.some((pad) => pointInRotatedRectangle(
+    { x, z },
+    { x: pad.position[0], z: pad.position[2] },
+    pad.size[0],
+    pad.size[2],
+    pad.rotationY,
+  ));
 }
 
 interface CarProps {
@@ -50,9 +40,7 @@ function Car({ onLap, onBoostChange, onSpeedChange, racing, trackDef }: CarProps
   const rotationY = useRef(trackDef.carStart.rotationY);
   const boostRef = useRef(false);
   const boostEndRef = useRef(0);
-  const checkpointRef = useRef(false);
-  const prevXRef = useRef(trackDef.carStart.x);
-  const lapCooldownRef = useRef(0);
+  const lapProgressRef = useRef<LapProgress>(INITIAL_LAP_PROGRESS);
 
   const { camera } = useThree();
 
@@ -62,9 +50,7 @@ function Car({ onLap, onBoostChange, onSpeedChange, racing, trackDef }: CarProps
     carRef.current.position.set(x, 0.75, z);
     rotationY.current = ry;
     velocity.current = 0;
-    checkpointRef.current = false;
-    prevXRef.current = x;
-    lapCooldownRef.current = 0;
+    lapProgressRef.current = INITIAL_LAP_PROGRESS;
     boostRef.current = false;
     onBoostChange(false);
     onSpeedChange(0);
@@ -108,22 +94,16 @@ function Car({ onLap, onBoostChange, onSpeedChange, racing, trackDef }: CarProps
     onSpeedChange(velocity.current);
 
     const dir = new THREE.Vector3(-Math.sin(rotationY.current), 0, -Math.cos(rotationY.current));
-    const nx = pos.x + dir.x * velocity.current * 60 * dt;
-    const nz = pos.z + dir.z * velocity.current * 60 * dt;
-
-    const zones = trackDef.collisionZones;
-    if (isOnTrack(nx, nz, zones)) {
-      pos.x = nx;
-      pos.z = nz;
-    } else if (isOnTrack(nx, pos.z, zones)) {
-      pos.x = nx;
-      velocity.current *= 0.5;
-    } else if (isOnTrack(pos.x, nz, zones)) {
-      pos.z = nz;
-      velocity.current *= 0.5;
-    } else {
-      velocity.current *= 0.3;
-    }
+    const previous = { x: pos.x, z: pos.z };
+    const movement = moveCircleOnRoad(
+      trackDef.geometry,
+      previous,
+      { x: dir.x * velocity.current * 60 * dt, z: dir.z * velocity.current * 60 * dt },
+      CAR_COLLISION_RADIUS,
+    );
+    pos.x = movement.x;
+    pos.z = movement.z;
+    if (movement.collided) velocity.current *= 0.55;
 
     pos.y = 0.75;
     carRef.current.rotation.y = rotationY.current;
@@ -136,27 +116,16 @@ function Car({ onLap, onBoostChange, onSpeedChange, racing, trackDef }: CarProps
       onBoostChange(true);
     }
 
-    // Checkpoint
-    const cp = trackDef.checkpoint;
-    if (pos.x >= cp[0] && pos.x <= cp[1] && pos.z >= cp[2] && pos.z <= cp[3]) {
-      checkpointRef.current = true;
-    }
-
-    // Lap detection
-    const fin = trackDef.finish;
-    if (
-      checkpointRef.current &&
-      now > lapCooldownRef.current &&
-      prevXRef.current > 0 &&
-      pos.x <= 0 &&
-      pos.z >= fin.zMin &&
-      pos.z <= fin.zMax
-    ) {
+    const lapUpdate = updateLapProgress(
+      previous,
+      { x: pos.x, z: pos.z },
+      trackDef,
+      lapProgressRef.current,
+    );
+    lapProgressRef.current = lapUpdate.progress;
+    if (lapUpdate.lapCompleted) {
       onLap();
-      checkpointRef.current = false;
-      lapCooldownRef.current = now + 5000;
     }
-    prevXRef.current = pos.x;
 
     // Follow camera
     const idealOffset = new THREE.Vector3(
