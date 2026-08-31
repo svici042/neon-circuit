@@ -1,7 +1,7 @@
 /**
- * Owns the React Three Fiber scene and the car's frame-rate-sensitive mutable
- * state. React owns the scene graph; refs own velocity, heading, boost, lap
- * progress, and reusable vectors. Changing trackDef resets every mutable value.
+ * Owns the React Three Fiber scene and the car state that changes every frame.
+ * React manages scene objects, while refs store speed, heading, boost, lap
+ * progress, and reusable vectors. Changing the track resets all mutable state.
  */
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useRef, useEffect } from "react";
@@ -73,7 +73,7 @@ function Car({ onLap, onBoostChange, onSpeedChange, racing, trackDef }: CarProps
     const pos = carRef.current.position;
     const now = performance.now();
 
-    // Boost timeout
+    // Restore the normal maximum speed when the boost duration expires.
     if (boostRef.current && now > boostEndRef.current) {
       boostRef.current = false;
       onBoostChange(false);
@@ -81,13 +81,13 @@ function Car({ onLap, onBoostChange, onSpeedChange, racing, trackDef }: CarProps
 
     const topSpeed = boostRef.current ? BOOST_SPEED : MAX_SPEED;
 
-    // Steering — reads shared controls (keyboard OR touch)
+    // Steering reads the shared keyboard, touch, or gyroscope control state.
     const speedFactor = Math.abs(velocity.current) / MAX_SPEED;
     const reverseDir = velocity.current < 0 ? -1 : 1;
     if (controls.left) rotationY.current += TURN_SPEED * speedFactor * reverseDir;
     if (controls.right) rotationY.current -= TURN_SPEED * speedFactor * reverseDir;
 
-    // Acceleration / braking
+    // Apply acceleration, braking, and natural drag when no button is pressed.
     if (controls.forward) {
       velocity.current = Math.min(velocity.current + ACCELERATION, topSpeed);
     } else if (controls.backward) {
@@ -122,7 +122,7 @@ function Car({ onLap, onBoostChange, onSpeedChange, racing, trackDef }: CarProps
     pos.y = 0.75;
     carRef.current.rotation.y = rotationY.current;
 
-    // Boost pad
+    // Driving over an active boost pad temporarily increases the speed limit.
     if (!boostRef.current && isInBoostPad(pos.x, pos.z, trackDef.boostPads)) {
       boostRef.current = true;
       boostEndRef.current = now + BOOST_DURATION;
@@ -141,7 +141,7 @@ function Car({ onLap, onBoostChange, onSpeedChange, racing, trackDef }: CarProps
       onLap();
     }
 
-    // Follow camera
+    // Smoothly follow a point behind the car and look toward its travel direction.
     const cameraTarget = cameraTargetRef.current!.set(
       pos.x + Math.sin(rotationY.current) * 14,
       pos.y + 6,

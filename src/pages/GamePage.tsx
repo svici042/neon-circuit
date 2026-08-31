@@ -1,8 +1,8 @@
 /**
- * Coordinates the race session while presentation lives in focused game UI
- * components. This module is the single owner of game-state transitions,
- * monotonic timing, audio lifecycle, leaderboard persistence, and control
- * resets. RaceLifecycle generations make countdown/finish callbacks cancellable.
+ * Coordinates the entire race session while delegating rendering to smaller UI
+ * components. It owns game state, timing, audio, result storage, and control
+ * resets. `RaceLifecycle` tokens prevent stale timers from modifying a race
+ * that has already restarted or finished.
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { AudioEngine } from "@/game/AudioEngine";
@@ -41,6 +41,7 @@ export default function GamePage() {
   const [storageWarning, setStorageWarning] = useState<string>();
 
   const lapTimesRef = useRef<number[]>([]);
+  // These objects must persist between React renders, so they are stored in refs.
   const audioRef = useRef<AudioEngine | null>(null);
   const clockRef = useRef<RaceClock | null>(null);
   const lifecycleRef = useRef<RaceLifecycle | null>(null);
@@ -99,6 +100,7 @@ export default function GamePage() {
   }, [paused, gameState]);
 
   const startCountdown = useCallback(() => {
+    // Starting a new generation automatically invalidates the previous timers.
     const generation = lifecycleRef.current!.begin();
     currentRaceTokenRef.current = generation;
     resetControls();
@@ -153,6 +155,7 @@ export default function GamePage() {
     setBestLapTime((best) => best === null ? completedLap : Math.min(best, completedLap));
 
     if (newLap < TOTAL_LAPS) return;
+    // Only the first finish signal may complete a particular race generation.
     const generation = currentRaceTokenRef.current;
     if (!lifecycleRef.current!.claimCompletion(generation)) return;
     completionPendingRef.current = true;

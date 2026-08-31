@@ -1,4 +1,4 @@
-/** Read-only race telemetry overlay; all times are monotonic milliseconds. */
+/** Displays race telemetry over the game; all time values are in milliseconds. */
 import { formatTime } from "./time";
 
 interface HUDProps {
@@ -38,7 +38,7 @@ export default function HUD({
         userSelect: "none",
       }}
     >
-      {/* Countdown overlay */}
+      {/* Display the starting countdown in the center of the screen. */}
       {countdown > 0 && (
         <div
           style={{
@@ -63,7 +63,7 @@ export default function HUD({
         </div>
       )}
 
-      {/* Speedometer — bottom center */}
+      {/* The speedometer changes color while boost is active. */}
       <div
         style={{
           position: "absolute",
@@ -95,7 +95,7 @@ export default function HUD({
         </div>
       </div>
 
-      {/* Lap counter — top center */}
+      {/* Completed lap counter at the top center. */}
       <div
         style={{
           position: "absolute",
@@ -116,7 +116,7 @@ export default function HUD({
         </div>
       </div>
 
-      {/* Times — top left */}
+      {/* Current, previous, and best lap times. */}
       <div
         style={{
           position: "absolute",
@@ -148,7 +148,7 @@ export default function HUD({
         )}
       </div>
 
-      {/* Total time — top right */}
+      {/* Total race time at the top right. */}
       <div
         style={{
           position: "absolute",
@@ -166,7 +166,7 @@ export default function HUD({
         <div style={{ fontSize: "clamp(14px,2.5vmin,22px)", color: "#ffffff", fontWeight: "bold" }}>{formatTime(totalTime)}</div>
       </div>
 
-      {/* Controls hint — hidden on touch devices */}
+      {/* Hide keyboard hints on devices that use touch controls. */}
       {!isTouchDevice && (
         <div
           style={{

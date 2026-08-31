@@ -1,9 +1,10 @@
 /**
- * Owns one lazily-created Web Audio graph. Scheduled music sources and helper
- * nodes are tracked until their ended event; stop/destroy cancels the scheduler,
- * stops sources, disconnects nodes, and finally closes the AudioContext.
+ * Owns one lazily created Web Audio graph. Music sources are tracked until they
+ * end, while `stop` and `destroy` cancel scheduling, disconnect audio nodes,
+ * and finally close the `AudioContext`.
  */
 function makeDistortionCurve(amount: number): Float32Array<ArrayBuffer> {
+  // The distortion curve gives the engine oscillators a rough, futuristic tone.
   const curve = new Float32Array(256);
   for (let index = 0; index < curve.length; index++) {
     const x = (index * 2) / curve.length - 1;
@@ -43,6 +44,7 @@ export class AudioEngine {
       this.masterGain.gain.setValueAtTime(this.muted ? 0 : 1, ctx.currentTime);
       this.masterGain.connect(ctx.destination);
 
+      // Two oscillators, distortion, and a filter combine to imitate the car engine.
       this.engineGain = ctx.createGain();
       this.engineGain.gain.setValueAtTime(0, ctx.currentTime);
       const distortion = ctx.createWaveShaper();
@@ -77,6 +79,7 @@ export class AudioEngine {
     const [primary, secondary] = this.engineOscillators;
     if (!this.ctx || !primary || !secondary || !this.engineGain) return;
     const time = this.ctx.currentTime;
+    // Convert physics speed to a 0-1 range for audio frequency and volume control.
     const normalized = Math.max(0, Math.min(1, Math.abs(speed) / 0.55));
     const frequency = 80 + normalized * 150;
     const volume = normalized < 0.02 ? 0.08 + normalized * 2 : 0.2 + normalized * 0.35;
@@ -115,6 +118,7 @@ export class AudioEngine {
 
   private scheduleMusic(): void {
     if (!this.ctx || !this.musicPlaying || this.audioPaused) return;
+    // Scheduling slightly ahead keeps the rhythm stable between JavaScript timers.
     while (this.nextNoteTime < this.ctx.currentTime + 0.15) {
       this.playBassNote(BASS_NOTES[this.noteIndex % BASS_NOTES.length], this.nextNoteTime, BEAT_SECONDS * 1.7);
       this.playBeat(this.noteIndex, this.nextNoteTime);

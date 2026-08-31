@@ -1,4 +1,4 @@
-/** Renders validated, already-persisted race results; Escape returns to menu. */
+/** Displays validated race results; the Escape key returns to the menu. */
 import { useEffect, useRef } from "react";
 import { type LeaderboardEntry } from "./leaderboardStorage";
 import { formatTime } from "./time";
@@ -14,6 +14,7 @@ interface LeaderboardProps {
 }
 
 export default function Leaderboard({ entries, latestEntry, onPlay, title, storageWarning }: LeaderboardProps) {
+  // Sort a copy so the array received from the parent is not mutated.
   const sorted = [...entries].sort((a, b) => a.totalTime - b.totalTime);
   const dialogRef = useRef<HTMLDivElement>(null);
 

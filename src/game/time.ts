@@ -1,4 +1,4 @@
-/** Race timing in monotonic milliseconds, excluding every paused interval. */
+/** Measures race time in monotonic milliseconds while excluding paused intervals. */
 export interface RaceTimeSnapshot {
   lapTime: number;
   totalTime: number;

@@ -1,8 +1,8 @@
 /**
- * Touch and orientation adapters write to the shared controls object consumed
- * by RacingGame. Pointer capture handles releases outside a button, while the
- * request generation below prevents a late sensor-permission result from
- * reinstalling listeners after the controls have been hidden or unmounted.
+ * Touch and device-orientation events update the shared `controls` object read
+ * by `RacingGame`. Pointer capture detects release outside a button, while the
+ * request generation prevents a late sensor permission result from reinstalling
+ * listeners after the controls are hidden or unmounted.
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { controls, deviceOrientationSupported, gyroGamma, requestGyroPermission, resetControls, setupGyroControls } from "./controls";

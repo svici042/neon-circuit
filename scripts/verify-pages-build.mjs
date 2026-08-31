@@ -1,6 +1,6 @@
 /**
- * Post-build guard for GitHub Pages: production HTML must reference emitted
- * files below `/neon-circuit/`, never the source entry or an escaping path.
+ * Post-build guard: GitHub Pages HTML must reference generated files below
+ * `/neon-circuit/`, never the source entry or a path outside `dist`.
  */
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -19,6 +19,7 @@ if (productionAssets.length === 0) {
 }
 
 for (const reference of productionAssets) {
+  // Resolving the path and checking its prefix blocks `../` escapes from `dist`.
   const relativePath = reference.slice("/neon-circuit/".length);
   const assetPath = path.resolve(outputDirectory, relativePath);
   if (!assetPath.startsWith(`${outputDirectory}${path.sep}`)) {

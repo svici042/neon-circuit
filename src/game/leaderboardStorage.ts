@@ -1,7 +1,7 @@
 /**
- * Defensive localStorage boundary for the client-only leaderboard. Persisted
- * data is untrusted: reads are size-bounded before parsing, every field is
- * normalized against current tracks, and quota/privacy failures stay recoverable.
+ * Provides a defensive `localStorage` boundary for the leaderboard. Stored data
+ * is treated as untrusted: its size, fields, and tracks are validated, while
+ * storage failures remain recoverable and do not stop the game.
  */
 import { TRACKS } from "./tracks";
 
@@ -43,6 +43,7 @@ function stableId(trackId: number, totalTime: number, bestLap: number, date: str
 }
 
 export function validateLeaderboardEntry(value: unknown): LeaderboardEntry | null {
+  // Legacy entries may contain only a track name, so both formats are supported.
   if (!value || typeof value !== "object") return null;
   const candidate = value as Record<string, unknown>;
   const track =
@@ -73,6 +74,7 @@ export function normalizeLeaderboard(value: unknown): LeaderboardEntry[] {
   if (!Array.isArray(value)) return [];
   const valid = value.slice(0, 500).map(validateLeaderboardEntry).filter((entry): entry is LeaderboardEntry => entry !== null);
   const perTrack = new Map<number, number>();
+  // Keep the fastest entries while applying per-track and overall limits.
   return valid
     .sort((a, b) => a.totalTime - b.totalTime)
     .filter((entry) => {

@@ -1,7 +1,7 @@
 /**
- * Creates a dependency-free, store-only ZIP of the project source. The input
- * walk is allow-by-default so new source/assets are included, while generated,
- * private, cache, VCS, and dependency paths are rejected centrally below.
+ * Creates a ZIP archive of the project source without dependencies. New source
+ * and asset files are included automatically, while generated, private, cache,
+ * version-control, and dependency paths are excluded below.
  */
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -23,6 +23,7 @@ const EXCLUDED_FILE_PATTERNS = [
 ];
 
 export function shouldExclude(relativePath, isDirectory = false) {
+  // Normalize paths to `/` so the rules work consistently on Windows and Unix.
   const normalized = relativePath.replaceAll("\\", "/").replace(/^\.\//, "");
   const parts = normalized.split("/").filter(Boolean);
   if (parts.some((part) => EXCLUDED_DIRECTORIES.has(part))) return true;
@@ -50,6 +51,7 @@ const CRC_TABLE = Array.from({ length: 256 }, (_, value) => {
 });
 
 function crc32(data) {
+  // Each ZIP entry uses a checksum so extraction can detect corrupted data.
   let crc = 0xffffffff;
   for (const byte of data) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
   return (crc ^ 0xffffffff) >>> 0;
@@ -94,6 +96,7 @@ function centralHeader(name, data, checksum, stamp, offset) {
 }
 
 export async function createSourceArchive(root, output) {
+  // A ZIP consists of local file headers, a central directory, and an end record.
   const localParts = [];
   const centralParts = [];
   let offset = 0;

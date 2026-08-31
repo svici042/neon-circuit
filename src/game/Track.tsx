@@ -1,7 +1,7 @@
 /**
- * Builds the declarative Three.js scene for one immutable track definition.
- * Memoized BufferGeometry objects are attached to R3F meshes; React Three Fiber
- * owns and disposes them when a track replacement unmounts those attachments.
+ * Builds a declarative Three.js scene from an immutable track definition.
+ * Geometry created with `useMemo` is attached to R3F objects; when the track
+ * changes, React Three Fiber disposes the unused graphics resources.
  */
 import { useMemo } from "react";
 import * as THREE from "three";

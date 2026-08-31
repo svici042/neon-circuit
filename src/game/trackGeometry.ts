@@ -1,7 +1,7 @@
 /**
- * Pure X/Z-plane geometry and collision helpers. Track dimensions are
- * half-extents; Three.js Y is reserved for height. The generated road keeps
- * the original design rule that every authored road width is doubled.
+ * Pure geometry and collision helpers for the X/Z plane. Track dimensions are
+ * expressed as half-extents, while the Three.js Y axis is reserved for height.
+ * The final road width is doubled according to the project's design rule.
  */
 export interface Point2 {
   x: number;
@@ -71,8 +71,8 @@ export function makeTrackGeometry(outerHalfX: number, outerHalfZ: number, origin
 }
 
 /**
- * Signed distance to a rounded rectangle in world units. Negative values are
- * inside, zero is on the boundary, and positive values are outside.
+ * Signed distance to a rounded rectangle: negative is inside, zero lies on the
+ * boundary, and positive is outside.
  */
 export function roundedRectSignedDistance(point: Point2, rect: RoundedRect): number {
   const qx = Math.abs(point.x) - rect.halfX + rect.radius;
@@ -90,7 +90,7 @@ export function isPointOnRoad(geometry: TrackGeometry, point: Point2, clearance 
   );
 }
 
-/** Returns the smallest distance to either road edge; negative means off-road. */
+/** Returns the shortest distance to a road edge; a negative value means off-road. */
 export function roadClearance(geometry: TrackGeometry, point: Point2): number {
   const outerClearance = -roundedRectSignedDistance(point, geometry.outer);
   const innerClearance = roundedRectSignedDistance(point, geometry.inner);
@@ -134,9 +134,9 @@ export function moveCircleOnRoad(
     return { ...start, collided: true };
   }
   const distance = Math.hypot(delta.x, delta.z);
-  // Substeps keep a circular car collider from tunnelling through a wall when
-  // a frame stalls. At impact, only the wall-normal component is removed so
-  // tangential velocity produces the preserved sliding response.
+  // Small substeps prevent the car collider from tunneling through a wall after
+  // a stalled frame. On impact, only motion into the wall is removed, allowing
+  // the remaining tangential movement to slide along its edge.
   const steps = Math.max(1, Math.ceil(distance / Math.max(0.35, radius * 0.4)));
   const step = { x: delta.x / steps, z: delta.z / steps };
   let position = { ...start };
@@ -213,9 +213,8 @@ function isValidRoundedRect(rect: RoundedRect): boolean {
 }
 
 /**
- * Validates a sampled implicit loop. The array does not repeat its first point,
- * so closure is the last-to-first segment. The seam may be a long straight,
- * but cannot be an outlier beyond every ordinary segment.
+ * Validates a closed contour sampled into points. The first point is not
+ * repeated at the end, so the final segment connects the last point to the first.
  */
 export function isClosedLoop(points: Point2[]): boolean {
   if (points.length < 12) return false;
@@ -226,17 +225,17 @@ export function isClosedLoop(points: Point2[]): boolean {
   });
   if (segmentLengths.some((length) => !Number.isFinite(length) || length <= 1e-7)) return false;
   const seam = segmentLengths.at(-1)!;
-  // Exclude the segment immediately before the seam too: moving only the final
-  // point makes both adjacent segments enormous and must not normalize itself.
+  // Exclude the segment before the seam as well: a bad final point enlarges both
+  // adjacent segments and would otherwise incorrectly normalize itself.
   const ordinaryMaximum = Math.max(...segmentLengths.slice(0, -2));
   if (seam > ordinaryMaximum * 1.25) return false;
   return Number.isFinite(polygonSignedArea(points)) && Math.abs(polygonSignedArea(points)) > 1e-6;
 }
 
 /**
- * Checks dimension ordering and both sampled boundaries before geometry reaches
- * SVG, collision, or WebGL APIs. Outer and inner loops must share winding and
- * the outer polygon must enclose a strictly larger area.
+ * Validates dimensions and both contours before geometry reaches SVG, collision,
+ * or WebGL code. Contours must share the same winding and the outer area must
+ * be larger.
  */
 export function isValidTrackGeometry(geometry: TrackGeometry): boolean {
   const scalars = [

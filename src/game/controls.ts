@@ -1,7 +1,7 @@
 /**
- * Shared imperative input state read by the render loop. Keyboard, touch, and
- * gyroscope adapters are the only writers; every lifecycle exit resets all
- * fields so a released or hidden control cannot leave the car accelerating.
+ * Shared control state read by the game loop on every frame. Keyboard, touch,
+ * and gyroscope adapters update it. Every value is reset when leaving a race
+ * so the car cannot remain stuck accelerating or steering.
  */
 export const controls = {
   forward: false,
@@ -31,6 +31,7 @@ export function setKeyboardControlsEnabled(enabled: boolean): void {
 }
 
 export function setupKeyboardControls(): () => void {
+  // The returned cleanup function removes every listener when the component unmounts.
   const down = (event: KeyboardEvent) => {
     const control = keyboardCodes[event.code];
     if (!keyboardEnabled || !control) return;
@@ -86,6 +87,7 @@ export function getOrientationAngle(): number {
 }
 
 export function mapOrientationToSteering(beta: number | null, gamma: number | null, angle: number): number {
+  // Screen rotation changes which sensor axis represents left and right steering.
   const normalized = ((angle % 360) + 360) % 360;
   if (normalized === 90) return -(beta ?? 0);
   if (normalized === 180) return -(gamma ?? 0);

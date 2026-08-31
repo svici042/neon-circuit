@@ -1,3 +1,4 @@
+/** Replaces a crashed 3D scene with a clear WebGL error message. */
 import { Component, ReactNode } from "react";
 
 interface Props {
@@ -16,6 +17,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): State {
+    // React calls this method when any descendant component throws an error.
     return { hasError: true, error: error.message };
   }
 

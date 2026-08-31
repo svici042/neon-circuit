@@ -1,3 +1,4 @@
+/** Pause dialog for resuming, restarting, or choosing a different track. */
 import type { CSSProperties } from "react";
 
 interface PauseMenuProps {
@@ -9,6 +10,7 @@ interface PauseMenuProps {
 }
 
 export default function PauseMenu({ accentColor, onResume, onRestart, onChangeTrack, onCancel }: PauseMenuProps) {
+  // This helper creates consistently styled menu buttons.
   const button = (label: string, onClick: () => void, primary = false) => (
     <button
       type="button"

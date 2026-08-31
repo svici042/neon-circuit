@@ -1,3 +1,4 @@
+/** Track selection screen with previews, difficulty labels, and a start button. */
 import type { CSSProperties } from "react";
 import { hexToRgb } from "./color";
 import { TRACKS, type TrackDef } from "./tracks";
@@ -10,6 +11,7 @@ const DIFFICULTY_COLORS: Record<TrackDef["difficulty"], string> = {
 };
 
 function TrackPreview({ trackDef, selected }: { trackDef: TrackDef; selected: boolean }) {
+  // The preview uses the same geometry as the 3D track, rendered as SVG paths.
   const { previewSvg, accentColor, difficulty } = trackDef;
   return (
     <svg viewBox={previewSvg.viewBox} width="100%" height="100%" style={{ display: "block" }}>
